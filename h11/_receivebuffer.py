@@ -78,6 +78,10 @@ class ReceiveBuffer:
         """
         Extract a fixed number of bytes from the buffer.
         """
+        # Integer subclasses can compare differently from their slice value.
+        if self._data and type(count) is int and count > 0:
+            return self._extract(count)
+
         out = self._data[:count]
         if not out:
             return None
