@@ -1,9 +1,57 @@
+from __future__ import annotations
+
+import operator
 import re
-from typing import Tuple
 
 import pytest
 
 from .._receivebuffer import ReceiveBuffer
+
+
+class CountWithCustomComparison(int):
+    """Expose comparisons that slicing an integer subclass does not use."""
+
+    def __gt__(self, other: object) -> bool:
+        raise AssertionError("The slice count must not be compared")
+
+
+@pytest.mark.parametrize(
+    "count, expected, remaining",
+    [
+        (2, b"ab", b"c"),
+        (3, b"abc", b""),
+        (4, b"abc", b""),
+        (2**100, b"abc", b""),
+        (0, None, b"abc"),
+        (-1, b"ab", b"c"),
+        (-2, b"a", b"bc"),
+        (-3, None, b"abc"),
+        (-4, None, b"abc"),
+        (-(2**100), None, b"abc"),
+        (True, b"a", b"bc"),
+        (False, None, b"abc"),
+        (CountWithCustomComparison(2), b"ab", b"c"),
+    ],
+)
+def test_receivebuffer_slice_counts(
+    count: int, expected: bytes | None, remaining: bytes
+) -> None:
+    if isinstance(count, CountWithCustomComparison):
+        with pytest.raises(AssertionError):
+            operator.gt(count, 0)
+
+    buf = ReceiveBuffer()
+    buf += b"abc"
+
+    extracted = buf.maybe_extract_at_most(count)
+    if expected is None:
+        assert extracted is None
+    else:
+        assert isinstance(extracted, bytearray)
+        assert extracted == expected
+
+    assert bytes(buf) == remaining
+    assert len(buf) == len(remaining)
 
 
 def test_receivebuffer() -> None:
@@ -119,7 +167,7 @@ def test_receivebuffer() -> None:
         ),
     ],
 )
-def test_receivebuffer_for_invalid_delimiter(data: Tuple[bytes]) -> None:
+def test_receivebuffer_for_invalid_delimiter(data: tuple[bytes]) -> None:
     b = ReceiveBuffer()
 
     for line in data:
